@@ -17,8 +17,8 @@ Python runGoSimulation.py
 - Each component is represented using a particle with or without interaction particles on its surface
 -  The assembly is simulated using Brownian Dynamics in IMP
 -  Input interaction file
--         This should just have the interacting pairs of particles given as indices, commas between the particles and a newline between each pair
-          If no interaction file is given, the script will make a ring structure by default
+-> This should just have the interacting pairs of particles given as indices, commas between the particles and a newline between each pair
+-> If no interaction file is given, the script will make a ring structure by default
 - The interaction particles are small particles on the surface of the main one, and at a fixed distance away from each other and the centre of the main particle
 -         Where present, it will be these, and not the main particles, that participate in the direct interactions
           Not necessary for more compact complexes, but are required to form stable ring or fibril structures
