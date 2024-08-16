@@ -75,3 +75,13 @@ Set of Python codes for using IMP to set up and run Go-type models of macromolec
 
 - This runs analyses of the repeats and then combines some of the data to give mean passage time for each subcomplex, number of subcomplexes seen overall and what fraction this is for all possible subcomplexes (for number of particles up to ten), and a sort of energy landscape for the transition
 - All of these need work to be more useful and informative
+
+# EXAMPLES #
+
+`python runGoSimulation.py -f 1 -b 2000 -r 50 -n 17 -i globule-interaction-file.dat`
+
+- This creates a globule complex structure, uses no interaction particles, and includes a file specifying the interactions to be created
+
+`python runGoSimulation.py -f 0 -p 2 -b 2000 -n 10 -r 50`
+
+- This creates a ring structure (default if no interaction file is given)
