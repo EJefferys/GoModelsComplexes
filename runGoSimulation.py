@@ -46,7 +46,7 @@ args=parser.parse_args()
 
 fname=args.filename
 if args.particles!=None:
-    sliceStep=int(args.particles)
+    sliceStep=int(args.particles)+1
 else:
     sliceStep=None
 L=int(args.boxsize)
