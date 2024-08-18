@@ -1,11 +1,9 @@
-# various functions for the simulations and their analysis
-from GoModelFunctions import *
+# IMPORT #
 
 # general
 import os
 import random
 import MDAnalysis
-import numpy as np
 import MDAnalysis.analysis.contacts as contacts
 import argparse
 import glob
@@ -23,19 +21,41 @@ import RMF
 import IMP.container
 import IMP.display
 
+# maths
+import numpy as np
+import pandas as pd
+from itertools import groupby,product
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.cluster import DBSCAN
+import networkx
+from networkx.algorithms.components.connected import connected_components
+import scipy.special
+
 # plotting
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-import argparse
-import MDAnalysis
-import IMP
-import RMF
-import os
-import glob
 
+# FUNCTIONS #
+
+def fixComplex(complexString):
+    complexList=[]
+
+    for c in complexString.split('[')[1][:-1].split('),'):
+        d=c.split('(')[1]
+        if ')' in d:
+            tmp=d[:-1]
+        else:
+            tmp=d
+        com=[]
+        for t in tmp.split(',')[:-1]:
+            if ' ' in t:
+                t=t[2:-1]
+            else:
+                t=t[1:-1]
+            com.append(t)
+        complexList.append(sorted(com))
+    return complexList
 
 def intersection(lst1,lst2):
     lst3=[value for value in lst1 if value in lst2]
@@ -72,6 +92,161 @@ def show_data_xml(nh,kc):
     if opened:
         f.write("/>\n")
 
+
+def xmlToPDB(fname):
+    """convert xml file fname.xml to PDB file because PDB is more handy for people with MD backgrounds"""
+
+    f=open('%s.pdb'%(fname),'w')
+    f.write('CRYST1   30.000   30.000   30.000  90.00  90.00  90.00 P 1           1\n')
+    fl=open('%s.xml'%(fname),'r')
+    lines=fl.readlines()
+    fl.close()
+    w=0
+    for j in range(len(lines)):
+        if string in lines[j]:
+            if 'name' in lines[j-1]:
+                print(lines[j-1])
+                tmp=lines[j-1].split('=')[1]
+                name=tmp.split('"')[1]
+                if '-' in name:
+                    name=name.split('-')[1]
+                else:
+                    name=name
+        if 'coordinates =' in lines[j] and '"p' in lines[j-5]:
+            coords=lines[j].split('[')[1].split(']')[0]
+            xyz=coords.split(',')
+            xyz=[float(x) for x in xyz]
+            f.write('{:6s}{:5d} {:^4s}{:1s}{:3s} {:1s}{:4d}{:1s}   {:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}          {:>2s}{:2s}\n'.format('ATOM',w,'O',' ',name,'A',w,' ',xyz[0],xyz[1],xyz[2],1,1,'O',str(0)))
+            w+=1
+    f.close()
+
+
+def toGraph(l):
+    """convert list l into a networkx graph"""
+
+    G=networkx.Graph()
+    for part in l:
+        # each sublist is a bunch of nodes
+        G.add_nodes_from(part)
+        # it also imlies a number of edges:
+        G.add_edges_from(toEdges(part))
+    return G
+
+def toEdges(l):
+    """
+        treat `l` as a Graph and returns it's edges
+        toEdges(['a','b','c','d']) -> [(a,b), (b,c),(c,d)]
+    """
+    it=iter(l)
+    last=next(it)
+
+    for current in it:
+        yield last,current
+        last=current
+
+def checkContact(a1,a2,cutoff):
+    """given coordinates of two particles a1 and a2, check if they are in contact given the cutoff"""
+
+    distance=np.linalg.norm(a1-a2)
+    if distance<=cutoff:
+        return True
+    else:
+        return False
+
+def getScore(i):
+    f=open('%s.xml'%(i),'r')
+    lines=f.readlines()
+    f.close()
+    score=0
+    for l in lines:
+        if 'score' in l:
+            score+=float(l.split('"')[1])
+    return score
+
+def removeDuplicates(lst):
+    return [t for t in (set(tuple(i) for i in lst))]
+
+def groupCompare(g1,g2):
+    list1=[]
+    list2=[]
+    for tup1 in g1:
+        list1.append(sorted(tup1))
+    for tup2 in g2:
+        list2.append(sorted(tup2))
+    if len(list1)==len(list2):
+        print(list1)
+        print(list2)
+    if sorted(list1)==sorted(list2):
+        return 1
+    else:
+        return 0
+
+def sorted_k_partitions(seq,k):
+    """Returns a list of all unique k-partitions of `seq`.
+
+    Each partition is a list of parts, and each part is a tuple.
+
+    The parts in each individual partition will be sorted in shortlex
+    order (i.e., by length first, then lexicographically).
+
+    The overall list of partitions will then be sorted by the length
+    of their first part, the length of their second part, ...,
+    the length of their last part, and then lexicographically.
+    """
+    n=len(seq)
+    groups=[]  # a list of lists, currently empty
+
+    def generate_partitions(i):
+        if i>=n:
+            yield list(map(tuple,groups))
+        else:
+            if n-i>k-len(groups):
+                for group in groups:
+                    group.append(seq[i])
+                    yield from generate_partitions(i+1)
+                    group.pop()
+
+            if len(groups)<k:
+                groups.append([seq[i]])
+                yield from generate_partitions(i+1)
+                groups.pop()
+
+    result=generate_partitions(0)
+
+    # Sort the parts in each partition in shortlex order
+    result=[sorted(ps,key=lambda p: (len(p),p)) for ps in result]
+    # Sort partitions by the length of each part, then lexicographically.
+    result=sorted(result,key=lambda ps: (*map(len,ps), ps))
+
+    return result
+
+def Manhattan(tup1,tup2):
+    return np.linalg.norm(np.asarray(tup1)-np.asarray(tup2))
+
+def toGraph(l):
+    G=networkx.Graph()
+    for part in l:
+        # each sublist is a bunch of nodes
+        G.add_nodes_from(part)
+        # it also imlies a number of edges:
+        G.add_edges_from(toEdges(part))
+    return G
+
+def toEdges(l):
+    """
+        treat `l` as a Graph and returns it's edges
+        to_edges(['a','b','c','d']) -> [(a,b), (b,c),(c,d)]
+    """
+    it=iter(l)
+    last=next(it)
+
+    for current in it:
+        yield last,current
+        last=current
+
+
+# ARGUMENT PARSER #
+
 parser=argparse.ArgumentParser()
 parser.add_argument('-f','--filename',default='0',help='filename to be used for the rmf output of IMP and all subsequently generated processing and analysis files')
 parser.add_argument('-p','--particles',default=None,help='this should be used only if there are interaction particles, and should be one more than the number of interaction particles per main particle e.g. two interaction sites would be -p 3')
@@ -93,18 +268,7 @@ cutoff=(radius*2)+10
 
 nativePairList=[]
 
-if args.infile is None: # if no input file of interactions provided then default to a ring
-    sliceStep=3
-    ring=True
-    for i in range(nParticles-1):
-        p0='p%s'%(i)
-        p1='p%s'%(i+1)
-        #nativePairList.append([p0,p1])
-        nativePairList.append((p0,p1))
-    p0='p0'
-    #nativePairList.append([p0,p1])
-    nativePairList.append((p0,p1))
-else:                   # otherwise get the interactions from the input list
+if args.infile: # if no input file of interactions provided then default to a ring
     ring=False
     f=open(args.infile,'r')
     pairIndices=f.readlines()
@@ -116,12 +280,22 @@ else:                   # otherwise get the interactions from the input list
         p11='p%s'%(p1)
         #nativePairList.append([p01,p11])
         nativePairList.append((p01,p11))
+else:
+    sliceStep=3
+    ring=True
+    for i in range(nParticles-1):
+        p0='p%s'%(i)
+        p1='p%s'%(i+1)
+        #nativePairList.append([p0,p1])
+        nativePairList.append((p0,p1))
+    p0='p0'
+    #nativePairList.append([p0,p1])
+    nativePairList.append((p0,p1))
 
 
-################## NEED: file name, number of particles, native interaction pairs, number of interaction particles, radius
-# don't really need to rebuild the model, just make the interaction list
+# SETUP #
 
-### set up for the analysis ###
+# read and convert rmf
 
 file_name='%s.rmf'%(fname)
 myPath=os.getcwd()
@@ -211,13 +385,15 @@ for i in range(xmlCounter):
             w+=1
     f.close()
 
-### make the trajectory ###
+
+# make the trajectory
 
 os.system('bash combine.sh')
 os.system('cp 0.pdb traj-%s.pdb'%(fname))
 os.system('gmx trjcat -f `cat list-xtc.txt` -cat -o traj-%s.xtc'%(fname))
 
-### run analyses ###
+
+# COLLECT DATA #
 
 u=MDAnalysis.Universe('traj-%s.pdb'%(fname),'traj-%s.xtc'%(fname))
 residues=u.select_atoms('resname p*')
@@ -335,8 +511,7 @@ if ring==True: # repeat but account for the fact that all particles are equivale
         c2=[]
         for x in c1: # should be subcomplexes within stuff
             tmp=[1 for y in x]
-            c2.append(tmp)
-#            c2.append(len(x))
+            c2.append(tuple(tmp))
         c2=sorted(c2)
         newComplexes.append(c2)
         newTimes.append(time)
@@ -349,7 +524,6 @@ datDict={'scores':scoreList,'frames':frameList,'groups':groupList,'contacts':nCo
 df=pd.DataFrame(datDict)
 df.to_pickle('perframedata-%s.pkl'%(fname))
 
-#print(len(seenGroups)/len(groupOptions)) # what fraction of options are explored
 
 
 # PLOTS #
@@ -463,9 +637,6 @@ plt.gca().invert_yaxis()
 plt.savefig('%s-lineplot.png'%(fname),dpi=300)
 plt.close()
 
-#print(endFrame)
-#print(len(subdat)/5)
-#print(endFrame)
 truncate=endFrame*5#:w*5#len(subdat)-int(endFrame)
 
 for subdat in dat:
