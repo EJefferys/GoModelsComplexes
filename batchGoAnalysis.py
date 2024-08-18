@@ -27,5 +27,5 @@ for i in range(nRepeats):
         os.system('cp %s %s'%(inputfile,i))
     os.chdir('%s/%s'%(cwd,i))
     os.system('rm *.xml *.xtc *.txt *.pdb')
-    os.system('python3 runGoAnalysis.py -f %s -n %s -p %s -i %s -b %s -r %s'%(fname,nParticles,interactionParticles,inputfile,box,radius))
+    os.system('python3 runGoAnalysis.py -f %s -n %s -p %s -i %s -b %s -r %s'%(i,nParticles,interactionParticles,inputfile,box,radius))
     os.chdir(cwd)
