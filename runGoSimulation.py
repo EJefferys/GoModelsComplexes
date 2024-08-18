@@ -1,18 +1,14 @@
-# IMPORT #
-
-# various functions for the simulations and their analysis
-from GoModelFunctions import *
+# IMPORTS #
 
 # general
 import os
-import random
-import MDAnalysis
-import numpy as np
-import MDAnalysis.analysis.contacts as contacts
-import argparse
 import glob
-import itertools
+import random
 import secrets
+import argparse
+import pandas as pd
+import itertools
+from itertools import groupby,product
 
 # IMP
 import IMP
@@ -25,15 +21,78 @@ import RMF
 import IMP.container
 import IMP.display
 
+# maths
+import random
+import numpy as np
+import scipy.special
+import networkx
+from networkx.algorithms.components.connected import connected_components
+
+# analysis
+import MDAnalysis
+import MDAnalysis.analysis.contacts as contacts
+
 # plotting
 import matplotlib.pyplot as plt
 import seaborn as sns
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.cluster import DBSCAN
+
+
+# FUNCTIONS #
+
+def createSimpleParticle(m,name,radius,mass,colour,v):
+    """create a simple IMP particle with specified mass, radius, colour and coordinates (v)"""
+
+    p=IMP.Particle(m,name)
+    xyzr=IMP.core.XYZR.setup_particle(p)
+    xyzr.set_coordinates_are_optimized(True)
+    xyzr.set_coordinates(v)
+    xyzr.set_radius(radius)
+    IMP.atom.Mass.setup_particle(p,mass)
+    IMP.atom.Hierarchy.setup_particle(p)
+    IMP.display.Colored.setup_particle(p,IMP.display.get_display_color(colour))
+    IMP.atom.Diffusion.setup_particle(p)
+    return p
+
+def createCombinedParticle(m,p1,v1,names):
+    """create interaction patches for particle p1, whose coordinates are v1"""
+
+    v2=[v1[0]+50,v1[1],v1[2]]
+    v3=[v1[0]-50,v1[1],v1[2]]
+    p2=createSimpleParticle(m,names[0],1,1,0,v2)
+    p3=createSimpleParticle(m,names[1],1,1,0,v3)
+    return [p2,p3]
+
+def getRandomVector(L):
+    """get random vector within box of size L -- by using secrets module this should be closer to truly random"""
+
+    x1,x2=-L/2,L/2
+    y1,y2=-L/2,L/2
+    z1,z2=-L/2,L/2
+    number=secrets.randbits(128)
+    rng1=np.random.default_rng(number)
+    v=rng1.uniform([x1,y1,z1],[x2,y2,z2],size=(1,3))
+    return list(v[0])
+
+def convertToFrames(time_ns,stepsize_fs):
+    """converts the BD simulation time and stepsize into the number of frames"""
+
+    FS_PER_NS=1E6
+    time_fs=time_ns*FS_PER_NS
+    n_frames_float=(time_fs+0.0)/stepsize_fs
+    n_frames=int(round(n_frames_float))
+    return max(n_frames,1)
+
+def haversine(r,f): #################### needs tidying up and making more generalisable
+    """get arc distance between interaction particles on the surface of a particle of radius r"""
+
+    angle=(np.pi*2)/f # choosing the value of f influences the spacing of the particles and needs to be optimised for each system -- I did by trial and error but there is presumably a better way to do it
+    arc=angle*r
+    return arc
 
 
 # ARGUMENT PARSER #
-
-######################### want to generalise to any system so should be able to specify a file for the interactions between particles and the number of particles as input or default to a ring structure ###################
-########################## also add options for radius and mass of the particles #######################
 
 parser=argparse.ArgumentParser()
 parser.add_argument('-f','--filename',default='0',help='filename to be used for the rmf output of IMP and all subsequently generated processing and analysis files')
@@ -46,13 +105,12 @@ args=parser.parse_args()
 
 fname=args.filename
 if args.particles!=None:
-    sliceStep=int(args.particles)+1
+    sliceStep=int(args.particles)
 else:
     sliceStep=None
 L=int(args.boxsize)
 nParticles=int(args.nparticles)
 radius=float(args.radius)
-
 
 if args.infile is None: # if no input file of interactions provided then default to a ring
     sliceStep=3
@@ -62,6 +120,7 @@ else:                   # otherwise get the interactions from the input list
     f=open(args.infile,'r')
     pairIndices=f.readlines()
     f.close()
+
 
 # SET UP THE MODEL #
 
